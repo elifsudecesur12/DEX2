@@ -9,10 +9,12 @@ contract MyComplexToken is ERC20Burnable, Ownable {
 
     event TokensLocked(address indexed holder, uint256 amount, uint256 releaseTime);
     event TokensReleased(address indexed holder, uint256 amount);
+    event TokenTransferred(address indexed from, address indexed to, uint256 amount);
 
     struct LockInfo {
         uint256 releaseTime;
         uint256 amount;
+        bool locked;
     }
 
     mapping(address => LockInfo[]) public lockData;
@@ -33,10 +35,15 @@ contract MyComplexToken is ERC20Burnable, Ownable {
         require(holder != address(0), "Invalid address");
         require(releaseTime > block.timestamp, "Release time must be in the future");
         require(balanceOf(holder) >= amount, "Insufficient balance");
-        transfer(address(this), amount);
+
+        if (lockData[holder].length == 0) {
+            transfer(address(this), amount);
+        } else {
+            require(!lockData[holder][lockData[holder].length - 1].locked, "Previous lock is still active");
+        }
 
         lockedBalances[holder] += amount;
-        lockData[holder].push(LockInfo(releaseTime, amount));
+        lockData[holder].push(LockInfo(releaseTime, amount, true));
         emit TokensLocked(holder, amount, releaseTime);
     }
 
@@ -58,4 +65,14 @@ contract MyComplexToken is ERC20Burnable, Ownable {
         transfer(msg.sender, totalReleased);
         emit TokensReleased(msg.sender, totalReleased);
     }
+
+    function transferTokens(address to, uint256 amount) public onlyOwner {
+        require(to != address(0), "Invalid address");
+        require(lockedBalances[msg.sender] >= amount, "Insufficient locked balance");
+
+        lockedBalances[msg.sender] -= amount;
+        lockedBalances[to] += amount;
+        emit TokenTransferred(msg.sender, to, amount);
+    }
 }
+
